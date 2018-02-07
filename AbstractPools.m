@@ -109,31 +109,52 @@ classdef AbstractPools
             %FITDATA: Fits some set of guess parameters to input data
             %following the given model
             p = inputParser();
-            p.addOptional('lb',[])
-            p.addOptional('ub',[])
+            p.addParameter('lb',[])
+            p.addParameter('ub',[])
+            p.addParameter('linker',[])
             p.parse(varargin{:})
+            linker = p.Results.linker;
+            % Fill fit parameters from the guesses
             xNames = fieldnames(guess);
             j = 1;
             xIndex = cell(size(xNames));
             for i = 1:numel(xNames)
-                iFits = ~isnan(guess.(xNames{i}));
+                iFits = ~isnan(guess.(xNames{i})); % Dont fit NaNs
                 xIndex{i} = find(iFits==1);
                 for k = 1:numel(xIndex{i})
                     x0(j) = guess.(xNames{i})(xIndex{i}(k));
                     j = j+1;
                 end
             end
+            if ~isempty(linker)
+            % Fill link parameters
+            linkNames = fieldnames(linker);
+            j = 1;
+            linkIndex = cell(size(linkNames));
+            for i = 1:numel(linkNames)
+                iFits = ~isnan(linker.(linkNames{i})); % Dont fit NaNs
+                linkIndex{i} = find(iFits==1);
+                for k = 1:numel(linkIndex{i})
+                    link(j) = linker.(linkNames{i})(linkIndex{i}(k));
+                    j = j+1;
+                end
+            end
+            end
             tmpFlipAnlge = params.FaList(:,1);
-            params = self.parseParams(params);
             Y0 = ydata(:,1)./sin(tmpFlipAnlge);
+            if ~isempty(linker)
             fun = @(x,xdata)self.fitFunction(...
-                params,x,xNames,xIndex,Y0);
+                params,x,xNames,xIndex,Y0,link,linkNames,linkIndex);
+            else
+                fun = @(x,xdata)self.fitFunction(params,x,xNames,xIndex,Y0);
+            end
             opts = params.fitOptions;
             [x,resnorm,residual,exitflag,output,lambda,jacobian] = ...
                 lsqcurvefit(fun,x0,xdata,ydata,...
                 [p.Results.lb],[p.Results.ub],opts);
             resultParams = guess;
             allParams = params;
+            % Pack up Fit Parameters
             j = 1;
             for i = 1:numel(xNames)
                 if strcmp(xNames{i},'FaList')
@@ -144,6 +165,17 @@ classdef AbstractPools
                     for k = 1:numel(xIndex{i})
                         resultParams.(xNames{i})(xIndex{i}(k)) = x(j);
                         allParams.(xNames{i})(xIndex{i}(k)) = x(j);
+                        j = j+1;
+                    end
+                end
+            end
+            % Pack up Linked parameters
+            if ~isempty(linker)
+                j = 1;
+                for i = 1:numel(linkNames)
+                    for k = 1:numel(linkIndex{i})
+                        resultParams.(linkNames{i})(linkIndex{i}(k)) = x(link(j));
+                        allParams.(linkNames{i})(linkIndex{i}(k)) = x(link(j));
                         j = j+1;
                     end
                 end
@@ -170,12 +202,24 @@ classdef AbstractPools
             ylabel('Signal (arb)')
             legend(legendVals)
         end
-        function Y = fitFunction(self,params,x,xNames,xIndex,Y0)
+        function Y = fitFunction(self,params,x,xNames,xIndex,Y0,varargin)
             % fitFunction packs the parameter in params and x up and evaluates
             % using the evaluate funnction over some time (tSpan) with some
             % initial value (Y0)
-            j = 1;
+            
+            % Parse input
+            p = inputParser();
+            p.addOptional('link',[])
+            p.addOptional('linkNames',[])
+            p.addOptional('linkIndex',[])
+            p.parse(varargin{:})
+            link = p.Results.link;
+            linkNames = p.Results.linkNames;
+            linkIndex = p.Results.linkIndex;
+            j=1;
+            % Fill fit variables
             for i = 1:numel(xNames)
+                % fill in the rest of the fit variables
                 for k = 1:numel(xIndex{i})
                     params.(xNames{i})(xIndex{i}(k)) = x(j);
                     % Check if fitting flip angle (there mus be a better
@@ -187,7 +231,20 @@ classdef AbstractPools
                     j = j+1;
                 end
             end
+            if ~isempty(link)
+            j=1;
+            % Link multiple varibles to fit variables
+            for i = 1:numel(linkNames)
+                % fill in the rest of the fit variables
+                for k = 1:numel(linkIndex{i})
+                    % DO NOT LINK FLIP ANGLE THIS PROBABLY WONT WORK
+                    params.(linkNames{i})(linkIndex{i}(k)) = x(link(j));
+                    j = j+1;
+                end
+            end
+            end
             % Split out the multiple Physical compartments
+            params = self.parseParams(params);
             Y0 = self.splitM0(Y0,params);
             [~, Y, ~] = self.compile(Y0,params);
         end

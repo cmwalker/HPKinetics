@@ -46,8 +46,8 @@ classdef MultiPool
                 paramsOut.FaList = repmat(paramsOut.FaList(:,1),...
                     1,length(paramsOut.TRList));
             elseif numel(paramsOut.FaList) == 1
-                paramsOut.FaList = repmat(paramsOut.FaList(:,1),...
-                    length(paramsOut.T1s),length(paramsOut.TRList));
+                paramsOut.FaList = repmat(paramsOut.FaList,...
+                    length(paramsOut.TRList),length(paramsOut.T1s));
             end
 %             % Assuming input validation will put too much computational burdon on the fitting
 %             % Hopeing user will supply valid input!
